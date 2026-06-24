@@ -5,7 +5,8 @@ from datetime import datetime, timedelta, timezone
 # ── 環境變數 ──────────────────────────────
 NOTION_TOKEN = os.environ["NOTION_TOKEN"]
 LINE_TOKEN   = os.environ["LINE_TOKEN"]
-LINE_USER_ID = os.environ["LINE_USER_ID"]
+LINE_USER_ID   = os.environ["LINE_USER_ID"]
+LINE_USER_ID_2 = os.environ["LINE_USER_ID_2"]
 
 BILL_DB_ID = os.environ["BILL_DB_ID"]
 WIKI_DB_ID = os.environ["WIKI_DB_ID"]
@@ -49,7 +50,7 @@ def get_bills():
         formula_prop = p["properties"].get("下次繳費", {})
         formula_val  = formula_prop.get("formula", {})
 
-        print(f"DEBUG {name}: formula_val = {formula_val}")  # debug
+        print(f"DEBUG {name}: formula_val = {formula_val}")
 
         date_str = ""
         if formula_val.get("type") == "string":
@@ -144,18 +145,20 @@ def build_message():
     return msg
 
 def send_line(msg):
-    res = requests.post(
-        "https://api.line.me/v2/bot/message/push",
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {LINE_TOKEN}"
-        },
-        json={
-            "to": LINE_USER_ID,
-            "messages": [{"type": "text", "text": msg}]
-        }
-    )
-    print(f"LINE 回應：{res.status_code} {res.text}")
+    user_ids = [LINE_USER_ID, LINE_USER_ID_2]
+    for uid in user_ids:
+        res = requests.post(
+            "https://api.line.me/v2/bot/message/push",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {LINE_TOKEN}"
+            },
+            json={
+                "to": uid,
+                "messages": [{"type": "text", "text": msg}]
+            }
+        )
+        print(f"推播給 {uid[:10]}... 回應：{res.status_code}")
 
 if __name__ == "__main__":
     msg = build_message()
