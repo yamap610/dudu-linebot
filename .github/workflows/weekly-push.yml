@@ -1,0 +1,30 @@
+name: 週報推播
+
+on:
+  schedule:
+    - cron: '0 1 * * 0'  # 每週日 UTC 01:00 = 台灣時間 09:00
+  workflow_dispatch:       # 允許手動觸發（測試用）
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安裝 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安裝套件
+        run: pip install requests
+
+      - name: 執行推播腳本
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+          BILL_DB_ID: ${{ secrets.BILL_DB_ID }}
+          WIKI_DB_ID: ${{ secrets.WIKI_DB_ID }}
+          TODO_DB_ID: ${{ secrets.TODO_DB_ID }}
+        run: python weekly_push.py
