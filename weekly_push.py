@@ -40,16 +40,11 @@ def get_title(page):
 # 📊 支出管理：7天內「下次繳費」到期
 # ────────────────────────────────────────
 def get_bills():
-    today    = datetime.now(TW).date()
-    one_week = today + timedelta(days=7)
+    today     = datetime.now(TW).date()
+    one_week  = today + timedelta(days=7)
 
+    # 抓全部資料（不用 filter）
     results = query_db(BILL_DB_ID, {
-        "filter": {
-            "and": [
-                {"property": "下次繳費", "date": {"on_or_after": str(today)}},
-                {"property": "下次繳費", "date": {"on_or_before": str(one_week)}}
-            ]
-        },
         "sorts": [{"property": "下次繳費", "direction": "ascending"}]
     })
 
@@ -57,14 +52,37 @@ def get_bills():
     for p in results:
         name = get_title(p)
 
-        date_prop = p["properties"].get("下次繳費", {}).get("date", {})
-        date_str  = date_prop.get("start", "日期未設定") if date_prop else "日期未設定"
+        # 「下次繳費」是公式欄位，type 是 formula
+        formula_prop = p["properties"].get("下次繳費", {})
+        formula_val  = formula_prop.get("formula", {})
+        
+        # 公式結果可能是 string 或 date
+        date_str = ""
+        if formula_val.get("type") == "string":
+            date_str = formula_val.get("string", "")
+        elif formula_val.get("type") == "date":
+            date_obj = formula_val.get("date", {})
+            date_str = date_obj.get("start", "") if date_obj else ""
+
+        # 沒有日期就跳過
+        if not date_str:
+            continue
+
+        # 轉成 date 物件比較
+        try:
+            bill_date = datetime.strptime(date_str[:10], "%Y-%m-%d").date()
+        except:
+            continue
+
+        # 只要 7 天內的
+        if not (today <= bill_date <= one_week):
+            continue
 
         price_prop = p["properties"].get("價格", {})
         price      = price_prop.get("number")
         price_str  = f"${price:,}" if price else "金額未填"
 
-        lines.append(f"• {name}　{date_str}　{price_str}")
+        lines.append(f"• {name}　{date_str[:10]}　{price_str}")
 
     return lines
 
@@ -142,8 +160,8 @@ def get_todos_by_type(attr_name):
 def build_message():
     bills      = get_bills()
     wiki       = get_wiki()
-    buy_list   = get_todos_by_type("待買清單")
-    todo_list  = get_todos_by_type("待辦事項")
+    buy_list   = get_todos_by_type("🛒 待買清單")
+    todo_list  = get_todos_by_type("✅ 待辦事項")
 
     today_str = datetime.now(TW).strftime("%Y/%m/%d")
 
