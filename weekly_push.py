@@ -50,8 +50,6 @@ def get_bills():
         formula_prop = p["properties"].get("下次繳費", {})
         formula_val  = formula_prop.get("formula", {})
 
-        print(f"DEBUG {name}: formula_val = {formula_val}")
-
         date_str = ""
         if formula_val.get("type") == "string":
             date_str = formula_val.get("string", "")
@@ -75,7 +73,7 @@ def get_bills():
         price_str  = f"${price:,}" if price else ""
 
         date_display = bill_date.strftime("%m/%d")
-        lines.append(f"• {name} {date_display} {price_str}".strip())
+        lines.append(f"▪️ {name} {date_display} {price_str}".strip())
 
     return lines
 
@@ -90,7 +88,7 @@ def get_wiki():
         "sorts": [{"property": "建立時間", "direction": "descending"}]
     })
 
-    return [f"• {get_title(p)}" for p in results]
+    return [f"▪️ {get_title(p)}" for p in results]
 
 def get_todos_by_type(attr_name):
     results = query_db(TODO_DB_ID, {
@@ -103,7 +101,7 @@ def get_todos_by_type(attr_name):
         "sorts": [{"property": "優先級", "direction": "ascending"}]
     })
 
-    priority_icon = {"急": "🔴", "中": "🟡", "緩": "🟢"}
+    priority_tag = {"急": "[急]", "中": "[中]", "緩": "[緩]"}
 
     lines = []
     for p in results:
@@ -114,9 +112,9 @@ def get_todos_by_type(attr_name):
         pri_prop = p["properties"].get("優先級", {})
         pri_sel  = pri_prop.get("select", {})
         pri_name = pri_sel.get("name", "") if pri_sel else ""
-        icon     = priority_icon.get(pri_name, "•")
+        tag      = priority_tag.get(pri_name, "")
 
-        lines.append(f"{icon} {name}")
+        lines.append(f"▪️ {tag} {name}".strip())
 
     return lines
 
@@ -131,16 +129,16 @@ def build_message():
     msg  = f"✨嘟嘟一家🌙 週報 {today_str}\n\n"
 
     msg += "📊 繳費提醒\n"
-    msg += ("\n".join(bills) if bills else "✨ 本週沒有到期帳單") + "\n\n"
-
-    msg += "📚 小百科新文章\n"
-    msg += ("\n".join(wiki) if wiki else "📝 本週尚無新文章") + "\n\n"
+    msg += ("\n".join(bills) if bills else "▪️ 本週沒有到期帳單") + "\n\n"
 
     msg += "🛒 待買清單\n"
-    msg += ("\n".join(buy_list[:10]) if buy_list else "✨ 待買清單是空的") + "\n\n"
+    msg += ("\n".join(buy_list[:10]) if buy_list else "▪️ 待買清單是空的") + "\n\n"
 
     msg += "✅ 待辦事項\n"
-    msg += ("\n".join(todo_list[:10]) if todo_list else "🎉 所有待辦已完成！")
+    msg += ("\n".join(todo_list[:10]) if todo_list else "▪️ 所有待辦已完成！") + "\n\n"
+
+    msg += "📚 小百科新文章\n"
+    msg += ("\n".join(wiki) if wiki else "▪️ 本週尚無新文章")
 
     return msg
 
