@@ -24,6 +24,7 @@ jobs:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+          LINE_USER_ID_2: ${{ secrets.LINE_USER_ID_2 }}
           BILL_DB_ID: ${{ secrets.BILL_DB_ID }}
           WIKI_DB_ID: ${{ secrets.WIKI_DB_ID }}
           TODO_DB_ID: ${{ secrets.TODO_DB_ID }}
