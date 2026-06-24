@@ -49,6 +49,8 @@ def get_bills():
         formula_prop = p["properties"].get("下次繳費", {})
         formula_val  = formula_prop.get("formula", {})
 
+        print(f"DEBUG {name}: formula_val = {formula_val}")  # debug
+
         date_str = ""
         if formula_val.get("type") == "string":
             date_str = formula_val.get("string", "")
@@ -71,9 +73,7 @@ def get_bills():
         price      = price_prop.get("number")
         price_str  = f"${price:,}" if price else ""
 
-        # 日期只顯示 MM/DD
         date_display = bill_date.strftime("%m/%d")
-
         lines.append(f"• {name} {date_display} {price_str}".strip())
 
     return lines
@@ -102,12 +102,20 @@ def get_todos_by_type(attr_name):
         "sorts": [{"property": "優先級", "direction": "ascending"}]
     })
 
+    priority_icon = {"急": "🔴", "中": "🟡", "緩": "🟢"}
+
     lines = []
     for p in results:
         name_prop = p["properties"].get("項目名稱", {})
         texts     = name_prop.get("title", [])
         name      = texts[0]["plain_text"] if texts else "（無標題）"
-        lines.append(f"• {name}")
+
+        pri_prop = p["properties"].get("優先級", {})
+        pri_sel  = pri_prop.get("select", {})
+        pri_name = pri_sel.get("name", "") if pri_sel else ""
+        icon     = priority_icon.get(pri_name, "•")
+
+        lines.append(f"{icon} {name}")
 
     return lines
 
