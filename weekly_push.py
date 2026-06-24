@@ -103,7 +103,8 @@ def get_todos_by_type(attr_name):
 
     priority_tag = {"急": "[急]", "中": "[中]", "緩": "[緩]"}
 
-    lines = []
+    urgent = []
+    others = 0
     for p in results:
         name_prop = p["properties"].get("項目名稱", {})
         texts     = name_prop.get("title", [])
@@ -114,31 +115,53 @@ def get_todos_by_type(attr_name):
         pri_name = pri_sel.get("name", "") if pri_sel else ""
         tag      = priority_tag.get(pri_name, "")
 
-        lines.append(f"▪️ {tag} {name}".strip())
+        if pri_name == "急":
+            urgent.append(f"▪️ {tag} {name}".strip())
+        else:
+            others += 1
 
-    return lines
+    return urgent, others
 
 def build_message():
-    bills     = get_bills()
-    wiki      = get_wiki()
-    buy_list  = get_todos_by_type("🛒 待買清單")
-    todo_list = get_todos_by_type("✅ 待辦事項")
+    bills              = get_bills()
+    wiki               = get_wiki()
+    buy_urgent, buy_others   = get_todos_by_type("🛒 待買清單")
+    todo_urgent, todo_others = get_todos_by_type("✅ 待辦事項")
 
-    today_str = datetime.now(TW).strftime("%Y/%m/%d")
-
-    msg  = f"✨嘟嘟一家🌙 週報 {today_str}\n\n"
+    msg = f"✨叮咚～又到了嘟嘟一家的週報時間 📢\n\n"
 
     msg += "📊 繳費提醒\n"
     msg += ("\n".join(bills) if bills else "▪️ 本週沒有到期帳單") + "\n\n"
 
     msg += "🛒 待買清單\n"
-    msg += ("\n".join(buy_list[:10]) if buy_list else "▪️ 待買清單是空的") + "\n\n"
+    if buy_urgent:
+        msg += "\n".join(buy_urgent)
+        if buy_others > 0:
+            msg += f"\n（另有 {buy_others} 項待購）"
+    else:
+        msg += "▪️ 沒有急需購買的項目"
+        if buy_others > 0:
+            msg += f"\n（另有 {buy_others} 項待購）"
+    msg += "\n\n"
 
     msg += "✅ 待辦事項\n"
-    msg += ("\n".join(todo_list[:10]) if todo_list else "▪️ 所有待辦已完成！") + "\n\n"
+    if todo_urgent:
+        msg += "\n".join(todo_urgent)
+        if todo_others > 0:
+            msg += f"\n（另有 {todo_others} 項待辦）"
+    else:
+        msg += "▪️ 沒有急需處理的事項"
+        if todo_others > 0:
+            msg += f"\n（另有 {todo_others} 項待辦）"
+    msg += "\n\n"
 
     msg += "📚 小百科新文章\n"
-    msg += ("\n".join(wiki) if wiki else "▪️ 本週尚無新文章")
+    if wiki:
+        msg += "\n".join(wiki[:5])
+        if len(wiki) > 5:
+            msg += f"\n（本週共 {len(wiki)} 篇，其餘請至小百科查閱）"
+    else:
+        msg += "▪️ 本週尚無新文章"
 
     return msg
 
