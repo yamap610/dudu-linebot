@@ -1,9 +1,6 @@
 name: 週報推播
 
 on:
-  schedule:
-    - cron: '30 3 * * *'
-  # 每週日 UTC 01:00 = 台灣時間 09:00
   workflow_dispatch:       # 允許手動觸發（測試用）
 
 jobs:
