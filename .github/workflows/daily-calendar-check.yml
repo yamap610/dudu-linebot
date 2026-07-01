@@ -1,0 +1,28 @@
+name: Daily Calendar Check
+
+on:
+  workflow_dispatch:   # 讓 cron-job.org 可以透過 GitHub API 呼叫觸發
+
+jobs:
+  check-calendar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests google-auth google-api-python-client
+
+      - name: Run daily calendar check
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          CALENDAR_ID: ${{ secrets.CALENDAR_ID }}
+          LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+          LINE_USER_ID_2: ${{ secrets.LINE_USER_ID_2 }}
+        run: python daily_calendar_check.py
