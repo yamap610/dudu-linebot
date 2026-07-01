@@ -1,0 +1,27 @@
+name: 每日帳單提醒
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安裝 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安裝套件
+        run: pip install requests
+
+      - name: 執行每日帳單檢查
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+          LINE_USER_ID_2: ${{ secrets.LINE_USER_ID_2 }}
+          BILL_DB_ID: ${{ secrets.BILL_DB_ID }}
+        run: python daily_bill_check.py
