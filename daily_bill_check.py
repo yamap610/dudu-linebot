@@ -67,7 +67,7 @@ def get_due_today_and_overdue():
             due_today.append(f"🔔 {name} {price_str}".strip())
         elif bill_date < today:
             days_late = (today - bill_date).days
-            overdue.append(f"🔴 {name} {price_str}（已逾期{days_late}天）".strip())
+            overdue.append(f"⚠️ {name} {price_str}（已逾期{days_late}天）".strip())
 
     return due_today, overdue
 
