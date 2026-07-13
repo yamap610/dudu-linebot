@@ -3,8 +3,8 @@ name: Tomorrow Calendar Preview
 on:
   workflow_dispatch:
   schedule:
-    # 台灣時間每天晚上 9 點（UTC 13:00）
-    - cron: "0 13 * * *"
+    # 台灣時間每天晚上 9:07（UTC 13:07），避開 GitHub Actions 整點壅塞
+    - cron: "7 13 * * *"
 
 jobs:
   preview-tomorrow:
