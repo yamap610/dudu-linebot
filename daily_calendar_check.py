@@ -43,6 +43,20 @@ LOCATION_LABELS = {
     "回宜蘭": "回宜蘭",
 }
 
+# Google 新標籤 API 尚未對所有帳號回傳資料時，使用活動顏色備援。
+# 這些代碼來自「M.Y 嘟嘟一家」目前的實際行程資料。
+COLOR_DISPLAY = {
+    "2": ("🌸", "Yui"),
+    "4": ("🐰", "親子"),
+    "5": ("👣", "家庭"),
+    "11": ("🏥", "看診"),
+}
+
+LOCATION_COLORS = {
+    "6": "回桃園",
+    "1": "回宜蘭",
+}
+
 WEEKDAYS = "一二三四五六日"
 
 
@@ -119,6 +133,7 @@ def get_today_events():
             "title": title.strip(),
             "time": time_text,
             "label": label_name,
+            "color_id": e.get("colorId", ""),
         })
 
     return schedule
@@ -139,12 +154,16 @@ def build_message(events=None, now=None):
     for event in events:
         title = event["title"]
         label = event.get("label", "").strip()
-        location = LOCATION_LABELS.get(label)
+        color_id = str(event.get("color_id", ""))
+        location = LOCATION_LABELS.get(label) or LOCATION_COLORS.get(color_id)
 
         # 地點標籤且標題也是「回桃園／回宜蘭」時，視為跨日背景。
         # 標籤 API 尚未開放時，也可以靠標題辨識地點背景。
-        title_location = title if title in {"回桃園", "回宜蘭"} else None
-        if location and title == location:
+        title_location = next(
+            (place for place in ("回桃園", "回宜蘭") if title.startswith(place)),
+            None,
+        )
+        if location and title.startswith(location):
             if location not in locations:
                 locations.append(location)
             continue
@@ -155,6 +174,8 @@ def build_message(events=None, now=None):
 
         if label in LABEL_DISPLAY:
             icon, short_name = LABEL_DISPLAY[label]
+        elif color_id in COLOR_DISPLAY:
+            icon, short_name = COLOR_DISPLAY[color_id]
         elif location:
             icon, short_name = "📍", location.replace("回", "")
         else:
