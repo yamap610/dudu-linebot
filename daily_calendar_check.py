@@ -57,6 +57,12 @@ LOCATION_COLORS = {
     "1": "回宜蘭",
 }
 
+WEATHER_LOCATIONS = {
+    "台北": (25.0330, 121.5654),
+    "桃園": (24.9937, 121.3010),
+    "宜蘭": (24.7021, 121.7378),
+}
+
 WEEKDAYS = "一二三四五六日"
 
 
@@ -76,8 +82,7 @@ def get_label_map(service):
 
     if not labels:
         print(
-            "⚠️ 未讀取到 Google 日曆標籤。"
-            "請確認服務帳號已被授予「變更活動」權限。"
+            "⚠️ Google 尚未回傳日曆標籤，改用活動顏色辨識。"
         )
 
     return {
@@ -87,13 +92,16 @@ def get_label_map(service):
     }
 
 
-def get_today_events():
-    """回傳今天（台灣時區）的行程與標籤。"""
+def get_events(day_offset=0):
+    """回傳指定日期（0=今天、1=明天）的行程與標籤。"""
     service = get_calendar_service()
     label_map = get_label_map(service)
-    today = datetime.now(TW).date()
+    target_date = datetime.now(TW).date() + timedelta(days=day_offset)
 
-    start_of_day = datetime(today.year, today.month, today.day, 0, 0, 0, tzinfo=TW)
+    start_of_day = datetime(
+        target_date.year, target_date.month, target_date.day,
+        0, 0, 0, tzinfo=TW,
+    )
     end_of_day = start_of_day + timedelta(days=1)
 
     request = service.events().list(
@@ -139,15 +147,66 @@ def get_today_events():
     return schedule
 
 
-def build_message(events=None, now=None):
-    events = get_today_events() if events is None else events
+def get_weather_line(location_name, day_offset=0):
+    """取得台北、桃園或宜蘭的單行天氣摘要；失敗時不影響行程推播。"""
+    latitude, longitude = WEATHER_LOCATIONS[location_name]
+
+    try:
+        response = requests.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params={
+                "latitude": latitude,
+                "longitude": longitude,
+                "daily": (
+                    "weather_code,temperature_2m_max,temperature_2m_min,"
+                    "precipitation_probability_max"
+                ),
+                "timezone": "Asia/Taipei",
+                "forecast_days": max(2, day_offset + 1),
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+        daily = response.json()["daily"]
+
+        low = round(daily["temperature_2m_min"][day_offset])
+        high = round(daily["temperature_2m_max"][day_offset])
+        rain = round(daily["precipitation_probability_max"][day_offset])
+        weather_code = daily["weather_code"][day_offset]
+
+        if rain >= 60:
+            icon, summary = "🌧️", f"降雨 {rain}%"
+        elif rain >= 30:
+            icon, summary = "🌦️", f"降雨 {rain}%"
+        elif weather_code == 0:
+            icon, summary = "☀️", "晴朗"
+        elif weather_code in (1, 2, 3):
+            icon, summary = "🌤️", "多雲"
+        elif weather_code in (45, 48):
+            icon, summary = "🌫️", "有霧"
+        elif weather_code in (95, 96, 99):
+            icon, summary = "⛈️", "雷雨"
+        else:
+            icon, summary = "🌦️", "偶有陣雨"
+
+        return f"{icon} {location_name}｜{low}–{high}°C・{summary}"
+    except (requests.RequestException, KeyError, IndexError, TypeError, ValueError) as exc:
+        print(f"⚠️ 天氣資料讀取失敗：{exc}")
+        return None
+
+
+def build_message(events=None, now=None, day_offset=0):
+    events = get_events(day_offset) if events is None else events
 
     if not events:
         return None  # 今天沒有行程，不推播
 
-    now = now or datetime.now(TW)
-    date_text = f"{now.month}/{now.day}（{WEEKDAYS[now.weekday()]}）"
-    lines = [f"🏠 嘟嘟一家｜{date_text}"]
+    target_time = (now or datetime.now(TW)) + timedelta(days=day_offset)
+    date_text = (
+        f"{target_time.month}/{target_time.day}"
+        f"（{WEEKDAYS[target_time.weekday()]}）"
+    )
+    heading = "☀️ 今日行程" if day_offset == 0 else "🌙 明日預告"
     locations = []
     activity_lines = []
 
@@ -185,8 +244,17 @@ def build_message(events=None, now=None):
             f"{icon} {short_name}｜{event['time']} {title}"
         )
 
-    for location in locations:
-        lines.append(f"📍 {location}")
+    weather_location = locations[0].replace("回", "") if locations else "台北"
+    weather_line = get_weather_line(weather_location, day_offset)
+
+    lines = [f"{heading}｜{date_text}"]
+    if weather_line:
+        lines.append(weather_line)
+
+    if locations:
+        lines.append("")
+        for location in locations:
+            lines.append(f"📍 {location}")
 
     lines.append("")
     if activity_lines:
@@ -217,7 +285,8 @@ def send_line(msg):
 
 
 if __name__ == "__main__":
-    msg = build_message()
+    day_offset = int(os.getenv("DAY_OFFSET", "0"))
+    msg = build_message(day_offset=day_offset)
     if msg is None:
         print("今天沒有行程，不推播。")
     else:
