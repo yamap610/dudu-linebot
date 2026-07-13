@@ -1,0 +1,32 @@
+name: Tomorrow Calendar Preview
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 台灣時間每天晚上 9 點（UTC 13:00）
+    - cron: "0 13 * * *"
+
+jobs:
+  preview-tomorrow:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests google-auth google-api-python-client
+
+      - name: Send tomorrow preview
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          CALENDAR_ID: ${{ secrets.CALENDAR_ID }}
+          LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+          LINE_USER_ID_2: ${{ secrets.LINE_USER_ID_2 }}
+          DAY_OFFSET: "1"
+        run: python daily_calendar_check.py
