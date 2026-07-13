@@ -18,29 +18,32 @@ LINE_USER_ID_2 = os.environ["LINE_USER_ID_2"]
 TW = timezone(timedelta(hours=8))
 SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
 
-# Google Calendar 自訂標籤的顯示順序與圖示。
-# 日後新增標籤時，就算沒有列在這裡，仍會自動顯示。
-LABEL_ORDER = [
-    "Yui活動",
-    "Martin活動",
-    "家人行程/活動",
-    "嘟嘟家親子活動",
-    "就醫/看診",
-    "費用繳納",
-    "桃園",
-    "其他行程",
-]
-
-LABEL_ICONS = {
-    "Yui活動": "🌸",
-    "Martin活動": "🔵",
-    "家人行程/活動": "👨‍👩‍👧‍👦",
-    "嘟嘟家親子活動": "🐰",
-    "就醫/看診": "🏥",
-    "費用繳納": "💳",
-    "桃園": "📍",
-    "其他行程": "🗓️",
+# Google Calendar 標籤在 LINE 裡使用的簡短名稱。
+# 保留舊名稱相容性，已排定的舊行程不會突然無法辨識。
+LABEL_DISPLAY = {
+    "🌸 Yui活動": ("🌸", "Yui"),
+    "Yui活動": ("🌸", "Yui"),
+    "🔵 Martin活動": ("🔵", "Martin"),
+    "Martin活動": ("🔵", "Martin"),
+    "🐰 嘟嘟家親子活動": ("🐰", "親子"),
+    "嘟嘟家親子活動": ("🐰", "親子"),
+    "👣 家人行程/活動": ("👣", "家庭"),
+    "家人行程/活動": ("👣", "家庭"),
+    "🏥 就醫/看診": ("🏥", "看診"),
+    "就醫/看診": ("🏥", "看診"),
+    "💳 費用繳納": ("💳", "繳費"),
+    "費用繳納": ("💳", "繳費"),
 }
+
+# 「回桃園／回宜蘭」是所在地背景，不當成一般行程分類。
+LOCATION_LABELS = {
+    "📍 回桃園": "回桃園",
+    "回桃園": "回桃園",
+    "📍 回宜蘭": "回宜蘭",
+    "回宜蘭": "回宜蘭",
+}
+
+WEEKDAYS = "一二三四五六日"
 
 
 def get_calendar_service():
@@ -64,14 +67,14 @@ def get_label_map(service):
         )
 
     return {
-        label["id"]: label.get("name", "其他行程")
+        label["id"]: label.get("name", "").strip()
         for label in labels
         if label.get("id")
     }
 
 
 def get_today_events():
-    """回傳今天（台灣時區）的行程，並依 Google 日曆標籤分組。"""
+    """回傳今天（台灣時區）的行程與標籤。"""
     service = get_calendar_service()
     label_map = get_label_map(service)
     today = datetime.now(TW).date()
@@ -94,65 +97,85 @@ def get_today_events():
     events_result = request.execute()
 
     events = events_result.get("items", [])
-    schedule_by_label = {}
+    schedule = []
 
     for e in events:
         title = e.get("summary", "（無標題）")
         start = e.get("start", {})
         # Google 尚未向服務帳號提供標籤時，保留舊版的平面清單格式；
         # 一旦能讀到標籤，沒有標籤的活動才歸入「其他行程」。
-        label_name = (
-            label_map.get(e.get("eventLabelId"), "其他行程")
-            if label_map else None
-        )
+        label_name = label_map.get(e.get("eventLabelId"), "") if label_map else ""
 
         if "dateTime" in start:
             # 有明確時間的行程
             start_dt = datetime.fromisoformat(start["dateTime"])
             time_str = start_dt.astimezone(TW).strftime("%H:%M")
-            line = f"{time_str} {title}"
+            time_text = time_str
         else:
             # 整天的行程（例如生日、假期）
-            line = f"整天　{title}"
+            time_text = "整天"
 
-        schedule_by_label.setdefault(label_name, []).append(line)
+        schedule.append({
+            "title": title.strip(),
+            "time": time_text,
+            "label": label_name,
+        })
 
-    return schedule_by_label
+    return schedule
 
 
-def build_message():
-    schedule_by_label = get_today_events()
+def build_message(events=None, now=None):
+    events = get_today_events() if events is None else events
 
-    if not schedule_by_label:
+    if not events:
         return None  # 今天沒有行程，不推播
 
-    today_str = datetime.now(TW).strftime("%Y/%m/%d")
-    msg = f"📢 嘟嘟一家 今日行程（{today_str}）\n\n"
+    now = now or datetime.now(TW)
+    date_text = f"{now.month}/{now.day}（{WEEKDAYS[now.weekday()]}）"
+    lines = [f"🏠 嘟嘟一家｜{date_text}"]
+    locations = []
+    activity_lines = []
 
-    # 標籤 API 暫時不可用時維持原本格式，避免影響既有推播。
-    if set(schedule_by_label) == {None}:
-        msg += "\n".join(
-            f"🗓️ {line}" for line in schedule_by_label[None]
+    for event in events:
+        title = event["title"]
+        label = event.get("label", "").strip()
+        location = LOCATION_LABELS.get(label)
+
+        # 地點標籤且標題也是「回桃園／回宜蘭」時，視為跨日背景。
+        # 標籤 API 尚未開放時，也可以靠標題辨識地點背景。
+        title_location = title if title in {"回桃園", "回宜蘭"} else None
+        if location and title == location:
+            if location not in locations:
+                locations.append(location)
+            continue
+        if not label and title_location:
+            if title_location not in locations:
+                locations.append(title_location)
+            continue
+
+        if label in LABEL_DISPLAY:
+            icon, short_name = LABEL_DISPLAY[label]
+        elif location:
+            icon, short_name = "📍", location.replace("回", "")
+        else:
+            icon, short_name = "🗓️", "其他"
+
+        activity_lines.append(
+            f"{icon} {short_name}｜{event['time']} {title}"
         )
-        return msg.strip()
 
-    known_labels = [
-        label for label in LABEL_ORDER
-        if label in schedule_by_label
-    ]
-    new_labels = sorted(
-        label for label in schedule_by_label
-        if label not in LABEL_ORDER
-    )
+    for location in locations:
+        lines.append(f"📍 {location}")
 
-    sections = []
-    for label in known_labels + new_labels:
-        icon = LABEL_ICONS.get(label, "🏷️")
-        lines = "\n".join(schedule_by_label[label])
-        sections.append(f"{icon}【{label}】\n{lines}")
+    lines.append("")
+    if activity_lines:
+        lines.extend(activity_lines)
+    elif locations:
+        lines.append("☁️ 今天沒有其他安排")
+    else:
+        return None
 
-    msg += "\n\n".join(sections)
-    return msg.strip()
+    return "\n".join(lines).strip()
 
 
 def send_line(msg):
