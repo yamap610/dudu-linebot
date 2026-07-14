@@ -73,7 +73,7 @@ def get_bills():
         price_str  = f"${price:,}" if price else ""
 
         date_display = bill_date.strftime("%m/%d")
-        lines.append(f"▪️ {name} {date_display} {price_str}".strip())
+        lines.append(f"▪️ {name}｜{date_display} {price_str}".strip())
 
     return lines
 
@@ -88,7 +88,7 @@ def get_wiki():
         "sorts": [{"property": "建立時間", "direction": "descending"}]
     })
 
-    return [f"▪️ {get_title(p)}" for p in results]
+    return [get_title(p) for p in results]
 
 def get_todos_by_type(attr_name):
     results = query_db(TODO_DB_ID, {
@@ -101,8 +101,6 @@ def get_todos_by_type(attr_name):
         "sorts": [{"property": "優先級", "direction": "ascending"}]
     })
 
-    priority_tag = {"急": "[急]", "中": "[中]", "緩": "[緩]"}
-
     urgent = []
     others = 0
     for p in results:
@@ -113,10 +111,8 @@ def get_todos_by_type(attr_name):
         pri_prop = p["properties"].get("優先級", {})
         pri_sel  = pri_prop.get("select", {})
         pri_name = pri_sel.get("name", "") if pri_sel else ""
-        tag      = priority_tag.get(pri_name, "")
-
         if pri_name == "急":
-            urgent.append(f"▪️ {tag} {name}".strip())
+            urgent.append(f"▪️ {name}")
         else:
             others += 1
 
@@ -128,40 +124,42 @@ def build_message():
     buy_urgent, buy_others   = get_todos_by_type("🛒 待買清單")
     todo_urgent, todo_others = get_todos_by_type("✅ 待辦事項")
 
-    msg = f"✨叮咚～又到了嘟嘟一家的週報時間 📢\n\n"
+    today = datetime.now(TW).date()
+    week_end = today + timedelta(days=6)
+    msg = (
+        "📢 嘟嘟一家｜本週整理\n"
+        f"{today.month}/{today.day}-{week_end.month}/{week_end.day}\n"
+    )
 
-    msg += "📊 繳費提醒\n"
-    msg += ("\n".join(bills) if bills else "▪️ 本週沒有到期帳單") + "\n\n"
+    if bills:
+        msg += f"\n【本週待繳｜{len(bills)} 項】\n"
+        msg += "\n".join(bills) + "\n"
 
-    msg += "🛒 待買清單\n"
+    msg += f"\n【急需購買｜{len(buy_urgent)} 項】\n"
     if buy_urgent:
         msg += "\n".join(buy_urgent)
         if buy_others > 0:
-            msg += f"\n（另有 {buy_others} 項待購）"
+            msg += f"\n另有 {buy_others} 項一般待買"
     else:
-        msg += "▪️ 沒有急需購買的項目"
+        msg += "目前沒有急需購買的項目"
         if buy_others > 0:
-            msg += f"\n（另有 {buy_others} 項待購）"
-    msg += "\n\n"
+            msg += f"\n另有 {buy_others} 項一般待買"
 
-    msg += "✅ 待辦事項\n"
+    msg += f"\n\n【急需處理｜{len(todo_urgent)} 項】\n"
     if todo_urgent:
         msg += "\n".join(todo_urgent)
         if todo_others > 0:
-            msg += f"\n（另有 {todo_others} 項待辦）"
+            msg += f"\n另有 {todo_others} 項一般待辦"
     else:
-        msg += "▪️ 沒有急需處理的事項"
+        msg += "目前沒有急需處理的事項"
         if todo_others > 0:
-            msg += f"\n（另有 {todo_others} 項待辦）"
-    msg += "\n\n"
+            msg += f"\n另有 {todo_others} 項一般待辦"
 
-    msg += "📚 小百科新文章\n"
+    msg += "\n\n【小百科】\n"
     if wiki:
-        msg += "\n".join(wiki[:5])
-        if len(wiki) > 5:
-            msg += f"\n（本週共 {len(wiki)} 篇，其餘請至小百科查閱）"
+        msg += f"本週新增 {len(wiki)} 篇文章"
     else:
-        msg += "▪️ 本週尚無新文章"
+        msg += "本週沒有新增文章"
 
     return msg
 
@@ -176,7 +174,15 @@ def send_line(msg):
             },
             json={
                 "to": uid,
-                "messages": [{"type": "text", "text": msg}]
+                "messages": [{
+                    "type": "text",
+                    "text": msg,
+                    "quickReply": {"items": [
+                        {"type": "action", "action": {"type": "postback", "label": "查看全部待買", "data": "action=list&type=buy", "displayText": "查看全部待買"}},
+                        {"type": "action", "action": {"type": "postback", "label": "查看全部待辦", "data": "action=list&type=todo", "displayText": "查看全部待辦"}},
+                        {"type": "action", "action": {"type": "postback", "label": "查看小百科", "data": "action=wiki_menu", "displayText": "查看小百科"}}
+                    ]}
+                }]
             }
         )
         print(f"推播給 {uid[:10]}... 回應：{res.status_code}")
