@@ -19,12 +19,11 @@ TW = timezone(timedelta(hours=8))
 SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
 
 # Google Calendar 標籤在 LINE 裡使用的簡短名稱。
-# 保留舊名稱相容性，已排定的舊行程不會突然無法辨識。
 LABEL_DISPLAY = {
-    "🌸 Yui活動": ("🌸", "Yui"),
-    "Yui活動": ("🌸", "Yui"),
-    "🔵 Martin活動": ("🔵", "Martin"),
-    "Martin活動": ("🔵", "Martin"),
+    "🌸 由依活動": ("🌸", "由依"),
+    "由依活動": ("🌸", "由依"),
+    "🐴 馬丁活動": ("🐴", "馬丁"),
+    "馬丁活動": ("🐴", "馬丁"),
     "🐰 嘟嘟家親子活動": ("🐰", "親子"),
     "嘟嘟家親子活動": ("🐰", "親子"),
     "👣 家人行程/活動": ("👣", "家庭"),
@@ -46,7 +45,7 @@ LOCATION_LABELS = {
 # Google 新標籤 API 尚未對所有帳號回傳資料時，使用活動顏色備援。
 # 這些代碼來自「M.Y 嘟嘟一家」目前的實際行程資料。
 COLOR_DISPLAY = {
-    "2": ("🌸", "Yui"),
+    "2": ("🌸", "由依"),
     "4": ("🐰", "親子"),
     "5": ("👣", "家庭"),
     "11": ("🏥", "看診"),
@@ -135,7 +134,7 @@ def get_events(day_offset=0):
             time_text = time_str
         else:
             # 整天的行程（例如生日、假期）
-            time_text = "整天"
+            time_text = ""
 
         schedule.append({
             "title": title.strip(),
@@ -148,7 +147,7 @@ def get_events(day_offset=0):
 
 
 def get_weather_line(location_name, day_offset=0):
-    """取得台北、桃園或宜蘭的單行天氣摘要；失敗時不影響行程推播。"""
+    """取得單行天氣摘要與條件式提醒；失敗時不影響行程推播。"""
     latitude, longitude = WEATHER_LOCATIONS[location_name]
 
     try:
@@ -174,25 +173,51 @@ def get_weather_line(location_name, day_offset=0):
         rain = round(daily["precipitation_probability_max"][day_offset])
         weather_code = daily["weather_code"][day_offset]
 
-        if rain >= 60:
-            icon, summary = "🌧️", f"降雨 {rain}%"
-        elif rain >= 30:
-            icon, summary = "🌦️", f"降雨 {rain}%"
+        if rain >= 30:
+            summary = f"降雨 {rain}%"
         elif weather_code == 0:
-            icon, summary = "☀️", "晴朗"
+            summary = "晴朗"
         elif weather_code in (1, 2, 3):
-            icon, summary = "🌤️", "多雲"
+            summary = "多雲"
         elif weather_code in (45, 48):
-            icon, summary = "🌫️", "有霧"
+            summary = "有霧"
         elif weather_code in (95, 96, 99):
-            icon, summary = "⛈️", "雷雨"
+            summary = "雷雨"
         else:
-            icon, summary = "🌦️", "偶有陣雨"
+            summary = "偶有陣雨"
 
-        return f"{icon} {location_name}｜{low}–{high}°C・{summary}"
+        reminder = None
+        if rain >= 40:
+            when = "明天" if day_offset else "今天"
+            reminder = f"☂️ {when}容易下雨，出門記得帶傘喔！"
+        elif high >= 33:
+            reminder = "💧 氣溫偏高，外出記得補充水分～"
+        elif low <= 15:
+            reminder = "🧥 天氣偏涼，外出記得多帶件外套～"
+
+        return f"{location_name} {low}–{high}°C｜{summary}", reminder
     except (requests.RequestException, KeyError, IndexError, TypeError, ValueError) as exc:
         print(f"⚠️ 天氣資料讀取失敗：{exc}")
-        return None
+        return None, None
+
+
+def get_event_display(label, color_id, title):
+    """依標籤、顏色與標題備援，決定 LINE 上的分類名稱。"""
+    if label in LABEL_DISPLAY:
+        return LABEL_DISPLAY[label]
+    if color_id in COLOR_DISPLAY:
+        return COLOR_DISPLAY[color_id]
+
+    # Google 尚未向服務帳號回傳新標籤時，靠明確標題辨識常見分類。
+    if title.startswith("🏀") or "籃球" in title:
+        return "🐴", "馬丁"
+    if "由依" in title or "Yui" in title:
+        return "🌸", "由依"
+    if title.startswith("💸") or any(
+        keyword in title for keyword in ("信用卡費", "健保費", "繳費", "費用繳納")
+    ):
+        return "💳", "繳費"
+    return "🗓️", "其他"
 
 
 def build_message(events=None, now=None, day_offset=0):
@@ -206,7 +231,7 @@ def build_message(events=None, now=None, day_offset=0):
         f"{target_time.month}/{target_time.day}"
         f"（{WEEKDAYS[target_time.weekday()]}）"
     )
-    heading = "☀️ 今日行程" if day_offset == 0 else "🌙 明日預告"
+    heading = "📢 今日小叮嚀" if day_offset == 0 else "📢 明日小叮嚀"
     locations = []
     activity_lines = []
 
@@ -231,36 +256,43 @@ def build_message(events=None, now=None, day_offset=0):
                 locations.append(title_location)
             continue
 
-        if label in LABEL_DISPLAY:
-            icon, short_name = LABEL_DISPLAY[label]
-        elif color_id in COLOR_DISPLAY:
-            icon, short_name = COLOR_DISPLAY[color_id]
-        elif location:
+        if location:
             icon, short_name = "📍", location.replace("回", "")
         else:
-            icon, short_name = "🗓️", "其他"
+            icon, short_name = get_event_display(label, color_id, title)
 
+        display_title = title
+        for prefix in ("🏀", "💸"):
+            if display_title.startswith(prefix):
+                display_title = display_title[len(prefix):].lstrip()
+                break
+
+        time_prefix = f"{event['time']} " if event["time"] else ""
         activity_lines.append(
-            f"{icon} {short_name}｜{event['time']} {title}"
+            f"{icon} {short_name}｜{time_prefix}{display_title}"
         )
 
     weather_location = locations[0].replace("回", "") if locations else "台北"
-    weather_line = get_weather_line(weather_location, day_offset)
+    weather_line, weather_reminder = get_weather_line(
+        weather_location, day_offset
+    )
 
     lines = [f"{heading}｜{date_text}"]
     if weather_line:
-        lines.append(weather_line)
-
-    if locations:
         lines.append("")
-        for location in locations:
-            lines.append(f"📍 {location}")
+        lines.append(weather_line)
+        if weather_reminder:
+            lines.append(weather_reminder)
 
     lines.append("")
+    lines.append("【 行程 】")
+    if locations:
+        for location in locations:
+            lines.append(f"📍 {location}")
     if activity_lines:
         lines.extend(activity_lines)
     elif locations:
-        lines.append("☁️ 今天沒有其他安排")
+        pass
     else:
         return None
 
