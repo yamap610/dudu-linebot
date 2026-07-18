@@ -2,9 +2,15 @@ name: 每日帳單提醒
 
 on:
   workflow_dispatch:
+    inputs:
+      confirm_send:
+        description: "輸入 true 才執行舊版獨立帳單推播"
+        required: true
+        default: "false"
 
 jobs:
   check:
+    if: ${{ github.event.inputs.confirm_send == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -1,10 +1,16 @@
 name: Daily Calendar Check
 
 on:
-  workflow_dispatch:   # 讓 cron-job.org 可以透過 GitHub API 呼叫觸發
+  workflow_dispatch:
+    inputs:
+      confirm_send:
+        description: "輸入 true 才執行舊版獨立行程推播"
+        required: true
+        default: "false"
 
 jobs:
   check-calendar:
+    if: ${{ github.event.inputs.confirm_send == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
