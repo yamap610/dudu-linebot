@@ -2,9 +2,15 @@ name: Tomorrow Calendar Preview
 
 on:
   workflow_dispatch:
+    inputs:
+      confirm_send:
+        description: "輸入 true 才執行舊版獨立明日行程推播"
+        required: true
+        default: "false"
 
 jobs:
   preview-tomorrow:
+    if: ${{ github.event.inputs.confirm_send == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
