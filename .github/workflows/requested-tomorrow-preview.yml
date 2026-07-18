@@ -1,0 +1,35 @@
+name: 手動發送明日合併預告
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/requested-tomorrow-preview.yml"
+
+jobs:
+  send:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.head_commit.message == 'Send requested preview' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: 取得新版 LINE Bot
+        uses: actions/checkout@v4
+        with:
+          repository: yamap610/dudu-linebot-webhook
+          ref: main
+
+      - name: 設定 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 發送明日合併預告
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          TODO_DB_ID: ${{ secrets.TODO_DB_ID }}
+          BILL_DB_ID: ${{ secrets.BILL_DB_ID }}
+          LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+          LINE_USER_ID_2: ${{ secrets.LINE_USER_ID_2 }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          CALENDAR_ID: ${{ secrets.CALENDAR_ID }}
+        run: node scripts/send-tomorrow-preview.js
