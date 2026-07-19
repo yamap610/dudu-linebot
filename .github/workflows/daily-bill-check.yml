@@ -2,32 +2,30 @@ name: 每日帳單提醒
 
 on:
   workflow_dispatch:
-    inputs:
-      confirm_send:
-        description: "輸入 true 才執行舊版獨立帳單推播"
-        required: true
-        default: "false"
 
 jobs:
   check:
-    if: ${{ github.event.inputs.confirm_send == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: 安裝 Python
-        uses: actions/setup-python@v5
+      - name: 取得新版 LINE Bot
+        uses: actions/checkout@v4
         with:
-          python-version: '3.11'
+          repository: yamap610/dudu-linebot-webhook
+          ref: main
 
-      - name: 安裝套件
-        run: pip install requests
+      - name: 設定 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
 
-      - name: 執行每日帳單檢查
+      - name: 發送今日合併日報
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          TODO_DB_ID: ${{ secrets.TODO_DB_ID }}
+          BILL_DB_ID: ${{ secrets.BILL_DB_ID }}
           LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
           LINE_USER_ID_2: ${{ secrets.LINE_USER_ID_2 }}
-          BILL_DB_ID: ${{ secrets.BILL_DB_ID }}
-        run: python daily_bill_check.py
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          CALENDAR_ID: ${{ secrets.CALENDAR_ID }}
+        run: node scripts/send-morning-push.js
