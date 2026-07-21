@@ -18,8 +18,10 @@ class WeeklyPushTest(unittest.TestCase):
     def test_compact_weekly_message(self, _bills, _wiki, todos):
         todos.side_effect = [(['▪️ 濕紙巾', '▪️ 普拿疼'], 6), (['▪️ 冷氣'], 1)]
         message = weekly_push.build_message()
-        self.assertIn('📢 嘟嘟一家｜本週整理', message)
-        self.assertNotIn('繳費提醒', message)
+        self.assertIn('📢 本週整理 ', message)
+        self.assertNotIn('嘟嘟一家', message)
+        self.assertIn('【本週待繳｜0 項】', message)
+        self.assertIn('本週沒有待繳項目', message)
         self.assertIn('【急需購買｜2 項】', message)
         self.assertIn('另有 6 項一般待買', message)
         self.assertIn('【急需處理｜1 項】', message)
@@ -35,6 +37,7 @@ class WeeklyPushTest(unittest.TestCase):
         self.assertEqual(actions, [
             'action=list&type=buy',
             'action=list&type=todo',
+            'action=bills',
             'action=wiki_menu',
         ])
 

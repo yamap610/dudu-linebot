@@ -37,7 +37,7 @@ def get_title(page):
 
 def get_bills():
     today    = datetime.now(TW).date()
-    one_week = today + timedelta(days=7)
+    week_end = today + timedelta(days=6)
 
     results = query_db(BILL_DB_ID, {
         "sorts": [{"property": "下次繳費", "direction": "ascending"}]
@@ -45,6 +45,9 @@ def get_bills():
 
     lines = []
     for p in results:
+        if p["properties"].get("暫停訂閱", {}).get("checkbox", False):
+            continue
+
         name = get_title(p)
 
         formula_prop = p["properties"].get("下次繳費", {})
@@ -65,7 +68,7 @@ def get_bills():
         except:
             continue
 
-        if not (today <= bill_date <= one_week):
+        if not (today <= bill_date <= week_end):
             continue
 
         price_prop = p["properties"].get("價格", {})
@@ -126,14 +129,13 @@ def build_message():
 
     today = datetime.now(TW).date()
     week_end = today + timedelta(days=6)
-    msg = (
-        "📢 嘟嘟一家｜本週整理\n"
-        f"{today.month}/{today.day}-{week_end.month}/{week_end.day}\n"
-    )
+    msg = f"📢 本週整理 {today.month}/{today.day}-{week_end.month}/{week_end.day}\n"
 
     if bills:
         msg += f"\n【本週待繳｜{len(bills)} 項】\n"
         msg += "\n".join(bills) + "\n"
+    else:
+        msg += "\n【本週待繳｜0 項】\n本週沒有待繳項目\n"
 
     msg += f"\n【急需購買｜{len(buy_urgent)} 項】\n"
     if buy_urgent:
@@ -180,6 +182,7 @@ def send_line(msg):
                     "quickReply": {"items": [
                         {"type": "action", "action": {"type": "postback", "label": "查看全部待買", "data": "action=list&type=buy", "displayText": "查看全部待買"}},
                         {"type": "action", "action": {"type": "postback", "label": "查看全部待辦", "data": "action=list&type=todo", "displayText": "查看全部待辦"}},
+                        {"type": "action", "action": {"type": "postback", "label": "查看繳費", "data": "action=bills", "displayText": "查看繳費狀態"}},
                         {"type": "action", "action": {"type": "postback", "label": "查看小百科", "data": "action=wiki_menu", "displayText": "查看小百科"}}
                     ]}
                 }]
