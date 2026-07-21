@@ -93,6 +93,28 @@ def get_wiki():
 
     return [get_title(p) for p in results]
 
+def format_urgent_todo(name, properties, today=None):
+    today = today or datetime.now(TW).date()
+    date_prop = properties.get("預定作業日期", {})
+    date_obj = date_prop.get("date") or {}
+    date_str = date_obj.get("start", "")
+    if not date_str:
+        return f"▪️ {name}"
+
+    try:
+        due_date = datetime.strptime(date_str[:10], "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return f"▪️ {name}"
+
+    days = (due_date - today).days
+    if days < 0:
+        date_text = f"逾期 {abs(days)} 天"
+    elif days == 0:
+        date_text = "今天"
+    else:
+        date_text = f"{due_date.month}/{due_date.day}"
+    return f"▪️ {name}｜{date_text}"
+
 def get_todos_by_type(attr_name):
     results = query_db(TODO_DB_ID, {
         "filter": {
@@ -115,7 +137,7 @@ def get_todos_by_type(attr_name):
         pri_sel  = pri_prop.get("select", {})
         pri_name = pri_sel.get("name", "") if pri_sel else ""
         if pri_name == "急":
-            urgent.append(f"▪️ {name}")
+            urgent.append(format_urgent_todo(name, p["properties"]))
         else:
             others += 1
 

@@ -1,5 +1,6 @@
 import os
 import sys
+from datetime import date
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -12,6 +13,31 @@ import weekly_push
 
 
 class WeeklyPushTest(unittest.TestCase):
+    def test_urgent_todo_displays_scheduled_or_overdue_date(self):
+        today = date(2026, 7, 21)
+        self.assertEqual(
+            weekly_push.format_urgent_todo('回桃園待辦', {
+                '預定作業日期': {'date': {'start': '2026-07-25'}},
+            }, today),
+            '▪️ 回桃園待辦｜7/25',
+        )
+        self.assertEqual(
+            weekly_push.format_urgent_todo('領處方箋', {
+                '預定作業日期': {'date': {'start': '2026-07-21'}},
+            }, today),
+            '▪️ 領處方箋｜今天',
+        )
+        self.assertEqual(
+            weekly_push.format_urgent_todo('整理行李', {
+                '預定作業日期': {'date': {'start': '2026-07-19'}},
+            }, today),
+            '▪️ 整理行李｜逾期 2 天',
+        )
+        self.assertEqual(
+            weekly_push.format_urgent_todo('買尿布', {}, today),
+            '▪️ 買尿布',
+        )
+
     @patch.object(weekly_push, 'get_todos_by_type')
     @patch.object(weekly_push, 'get_wiki', return_value=['文章一', '文章二'])
     @patch.object(weekly_push, 'get_bills', return_value=[])
