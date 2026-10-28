@@ -9,8 +9,8 @@ LINE_USER_ID   = os.environ["LINE_USER_ID"]
 LINE_USER_ID_2 = os.environ["LINE_USER_ID_2"]
 
 BILL_DB_ID = os.environ["BILL_DB_ID"]
-WIKI_DB_ID = os.environ["WIKI_DB_ID"]
 TODO_DB_ID = os.environ["TODO_DB_ID"]
+EXPIRY_DB_ID = os.environ.get("EXPIRY_DB_ID") or "f40a3915e858492daa9a941ddccea34d"
 
 TW = timezone(timedelta(hours=8))
 
@@ -80,18 +80,43 @@ def get_bills():
 
     return lines
 
-def get_wiki():
-    last_week = datetime.now(TW).date() - timedelta(days=7)
-
-    results = query_db(WIKI_DB_ID, {
-        "filter": {
-            "property": "建立時間",
-            "date": {"on_or_after": str(last_week)}
-        },
-        "sorts": [{"property": "建立時間", "direction": "descending"}]
+def get_expiries(today=None):
+    today = today or datetime.now(TW).date()
+    week_end = today + timedelta(days=6)
+    results = query_db(EXPIRY_DB_ID, {
+        "filter": {"property": "已處理", "checkbox": {"equals": False}},
+        "sorts": [{"property": "日期", "direction": "ascending"}]
     })
 
-    return [get_title(p) for p in results]
+    lines = []
+    for page in results:
+        properties = page.get("properties", {})
+        if properties.get("提醒", {}).get("checkbox") is False:
+            continue
+        date_property = properties.get("日期") or properties.get("到期更換日", {})
+        if date_property.get("type") == "formula":
+            formula = date_property.get("formula", {})
+            if formula.get("type") == "date":
+                date_str = (formula.get("date") or {}).get("start", "")
+            else:
+                date_str = formula.get("string", "")
+        else:
+            date_str = (date_property.get("date") or {}).get("start", "")
+        try:
+            due_date = datetime.strptime(str(date_str)[:10], "%Y-%m-%d").date()
+        except (TypeError, ValueError):
+            continue
+        if due_date > week_end:
+            continue
+        days = (due_date - today).days
+        if days < 0:
+            label = f"已過期 {abs(days)} 天"
+        elif days == 0:
+            label = "今天到期"
+        else:
+            label = f"剩 {days} 天"
+        lines.append(f"▪️ {get_title(page)}｜{label}")
+    return lines
 
 def format_urgent_todo(name, properties, today=None):
     today = today or datetime.now(TW).date()
@@ -145,7 +170,7 @@ def get_todos_by_type(attr_name):
 
 def build_message():
     bills              = get_bills()
-    wiki               = get_wiki()
+    expiries           = get_expiries()
     buy_urgent, buy_others   = get_todos_by_type("🛒 待買清單")
     todo_urgent, todo_others = get_todos_by_type("✅ 待辦事項")
 
@@ -179,11 +204,11 @@ def build_message():
         if todo_others > 0:
             msg += f"\n另有 {todo_others} 項一般待辦"
 
-    msg += "\n\n【小百科】\n"
-    if wiki:
-        msg += f"本週新增 {len(wiki)} 篇文章"
+    msg += f"\n\n【效期提醒｜{len(expiries)} 項】\n"
+    if expiries:
+        msg += "\n".join(expiries)
     else:
-        msg += "本週沒有新增文章"
+        msg += "✨ 本週沒有即將到期或需要更換的品項，安心使用就好～"
 
     return msg
 
@@ -205,7 +230,7 @@ def send_line(msg):
                         {"type": "action", "action": {"type": "postback", "label": "查看全部待買", "data": "action=list&type=buy", "displayText": "查看全部待買"}},
                         {"type": "action", "action": {"type": "postback", "label": "查看全部待辦", "data": "action=list&type=todo", "displayText": "查看全部待辦"}},
                         {"type": "action", "action": {"type": "postback", "label": "查看繳費", "data": "action=bills", "displayText": "查看繳費狀態"}},
-                        {"type": "action", "action": {"type": "postback", "label": "查看小百科", "data": "action=wiki_menu", "displayText": "查看小百科"}}
+                        {"type": "action", "action": {"type": "postback", "label": "查看效期提醒", "data": "action=expiry", "displayText": "查看效期提醒"}}
                     ]}
                 }]
             }

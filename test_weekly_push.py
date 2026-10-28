@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-for name in ('NOTION_TOKEN', 'LINE_TOKEN', 'LINE_USER_ID', 'LINE_USER_ID_2', 'BILL_DB_ID', 'WIKI_DB_ID', 'TODO_DB_ID'):
+for name in ('NOTION_TOKEN', 'LINE_TOKEN', 'LINE_USER_ID', 'LINE_USER_ID_2', 'BILL_DB_ID', 'TODO_DB_ID'):
     os.environ.setdefault(name, 'test')
 
 sys.modules.setdefault('requests', SimpleNamespace(post=None))
@@ -39,9 +39,9 @@ class WeeklyPushTest(unittest.TestCase):
         )
 
     @patch.object(weekly_push, 'get_todos_by_type')
-    @patch.object(weekly_push, 'get_wiki', return_value=['文章一', '文章二'])
+    @patch.object(weekly_push, 'get_expiries', return_value=[])
     @patch.object(weekly_push, 'get_bills', return_value=[])
-    def test_compact_weekly_message(self, _bills, _wiki, todos):
+    def test_compact_weekly_message(self, _bills, _expiries, todos):
         todos.side_effect = [(['▪️ 濕紙巾', '▪️ 普拿疼'], 6), (['▪️ 冷氣'], 1)]
         message = weekly_push.build_message()
         self.assertIn('📢 本週整理 ', message)
@@ -51,8 +51,29 @@ class WeeklyPushTest(unittest.TestCase):
         self.assertIn('【急需購買｜2 項】', message)
         self.assertIn('另有 6 項一般待買', message)
         self.assertIn('【急需處理｜1 項】', message)
-        self.assertIn('本週新增 2 篇文章', message)
-        self.assertNotIn('文章一', message)
+        self.assertIn('【效期提醒｜0 項】', message)
+        self.assertIn('✨ 本週沒有即將到期或需要更換的品項，安心使用就好～', message)
+        self.assertNotIn('小百科', message)
+
+    @patch.object(weekly_push, 'query_db')
+    def test_expiry_reminders_include_overdue_and_this_week(self, query_db):
+        def expiry(name, due_date, reminder=True, handled=False):
+            return {'properties': {
+                '品項': {'type': 'title', 'title': [{'plain_text': name}]},
+                '日期': {'type': 'date', 'date': {'start': due_date}},
+                '提醒': {'checkbox': reminder},
+                '已處理': {'checkbox': handled},
+            }}
+        query_db.return_value = [
+            expiry('牛奶', '2026-07-20'),
+            expiry('濾芯', '2026-07-25'),
+            expiry('下週品項', '2026-07-28'),
+            expiry('關閉提醒', '2026-07-22', reminder=False),
+        ]
+        self.assertEqual(weekly_push.get_expiries(date(2026, 7, 21)), [
+            '▪️ 牛奶｜已過期 1 天',
+            '▪️ 濾芯｜剩 4 天',
+        ])
 
     @patch.object(weekly_push.requests, 'post')
     def test_weekly_message_has_view_all_buttons(self, post):
@@ -64,7 +85,7 @@ class WeeklyPushTest(unittest.TestCase):
             'action=list&type=buy',
             'action=list&type=todo',
             'action=bills',
-            'action=wiki_menu',
+            'action=expiry',
         ])
 
 
