@@ -24,6 +24,7 @@ jobs:
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
           LINE_USER_ID_2: ${{ secrets.LINE_USER_ID_2 }}
           BILL_DB_ID: ${{ secrets.BILL_DB_ID }}
+          BILL_HISTORY_DB_ID: ${{ secrets.BILL_HISTORY_DB_ID }}
           TODO_DB_ID: ${{ secrets.TODO_DB_ID }}
           EXPIRY_DB_ID: ${{ secrets.EXPIRY_DB_ID }}
         run: python weekly_push.py

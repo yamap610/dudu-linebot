@@ -38,6 +38,43 @@ class WeeklyPushTest(unittest.TestCase):
             '▪️ 買尿布',
         )
 
+    @patch.object(weekly_push, 'query_db')
+    def test_paid_early_bill_is_excluded_from_weekly_reminder(self, query_db):
+        query_db.side_effect = lambda db_id, _body: ([{
+            'id': 'federal-id',
+            'properties': {
+                '名稱': {'type': 'title', 'title': [{'plain_text': '信用卡費_聯邦'}]},
+                '下次繳費': {'formula': {'type': 'string', 'string': '2026-11-01'}},
+                '繳費週期': {'select': {'name': '月'}},
+                '價格': {'number': 30000},
+                '暫停訂閱': {'checkbox': False},
+            },
+        }] if db_id == weekly_push.BILL_DB_ID else [{'id': 'payment-id'}])
+        self.assertEqual(weekly_push.get_bills(date(2026, 10, 30)), [])
+        history_call = next(call for call in query_db.call_args_list
+                            if call.args[0] == weekly_push.BILL_HISTORY_DB_ID)
+        self.assertEqual(history_call.args[1]['filter']['and'], [
+            {'property': '產品', 'relation': {'contains': 'federal-id'}},
+            {'property': '繳費日期', 'date': {'on_or_after': '2026-10-02'}},
+            {'property': '繳費日期', 'date': {'on_or_before': '2026-10-30'}},
+        ])
+
+    @patch.object(weekly_push, 'query_db')
+    def test_unpaid_current_cycle_stays_in_weekly_reminder(self, query_db):
+        query_db.side_effect = lambda db_id, _body: ([{
+            'id': 'federal-id',
+            'properties': {
+                '名稱': {'type': 'title', 'title': [{'plain_text': '信用卡費_聯邦'}]},
+                '下次繳費': {'formula': {'type': 'string', 'string': '2026-11-01'}},
+                '繳費週期': {'select': {'name': '月'}},
+                '價格': {'number': 30000},
+                '暫停訂閱': {'checkbox': False},
+            },
+        }] if db_id == weekly_push.BILL_DB_ID else [])
+        self.assertEqual(weekly_push.get_bills(date(2026, 10, 30)), [
+            '▪️ 信用卡費_聯邦｜11/01 $30,000',
+        ])
+
     @patch.object(weekly_push, 'get_todos_by_type')
     @patch.object(weekly_push, 'get_expiries', return_value=[])
     @patch.object(weekly_push, 'get_bills', return_value=[])

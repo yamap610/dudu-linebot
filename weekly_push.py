@@ -1,4 +1,5 @@
 import os
+import calendar
 import requests
 from datetime import datetime, timedelta, timezone
 
@@ -11,6 +12,7 @@ LINE_USER_ID_2 = os.environ["LINE_USER_ID_2"]
 BILL_DB_ID = os.environ["BILL_DB_ID"]
 TODO_DB_ID = os.environ["TODO_DB_ID"]
 EXPIRY_DB_ID = os.environ.get("EXPIRY_DB_ID") or "f40a3915e858492daa9a941ddccea34d"
+BILL_HISTORY_DB_ID = os.environ.get("BILL_HISTORY_DB_ID") or "c3b447cd772183c4a3e101bfc6880814"
 
 TW = timezone(timedelta(hours=8))
 
@@ -35,8 +37,30 @@ def get_title(page):
             return texts[0]["plain_text"] if texts else "（無標題）"
     return "（無標題）"
 
-def get_bills():
-    today    = datetime.now(TW).date()
+def previous_billing_date(due_date, billing_cycle="月"):
+    months = {"月": 1, "季": 3, "年": 12}.get(billing_cycle, 1)
+    month_index = due_date.year * 12 + due_date.month - 1 - months
+    year, zero_based_month = divmod(month_index, 12)
+    month = zero_based_month + 1
+    day = min(due_date.day, calendar.monthrange(year, month)[1])
+    return due_date.replace(year=year, month=month, day=day)
+
+def has_payment_in_current_cycle(page_id, due_date, billing_cycle, today):
+    if not page_id:
+        return False
+    cycle_start = previous_billing_date(due_date, billing_cycle) + timedelta(days=1)
+    records = query_db(BILL_HISTORY_DB_ID, {
+        "filter": {"and": [
+            {"property": "產品", "relation": {"contains": page_id}},
+            {"property": "繳費日期", "date": {"on_or_after": str(cycle_start)}},
+            {"property": "繳費日期", "date": {"on_or_before": str(today)}}
+        ]},
+        "page_size": 1
+    })
+    return bool(records)
+
+def get_bills(today=None):
+    today    = today or datetime.now(TW).date()
     week_end = today + timedelta(days=6)
 
     results = query_db(BILL_DB_ID, {
@@ -69,6 +93,11 @@ def get_bills():
             continue
 
         if not (today <= bill_date <= week_end):
+            continue
+
+        cycle_select = p["properties"].get("繳費週期", {}).get("select") or {}
+        billing_cycle = cycle_select.get("name", "月")
+        if has_payment_in_current_cycle(p.get("id"), bill_date, billing_cycle, today):
             continue
 
         price_prop = p["properties"].get("價格", {})
