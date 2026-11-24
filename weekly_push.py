@@ -1,5 +1,7 @@
 import os
 import calendar
+import json
+import re
 import requests
 from datetime import datetime, timedelta, timezone
 
@@ -241,8 +243,104 @@ def build_message():
 
     return msg
 
+def _weekly_item_row(text):
+    text = text.removeprefix("▪️ ")
+    if "｜" not in text:
+        return {
+            "type": "text", "text": text, "size": "sm", "color": "#8A817D",
+            "wrap": True, "margin": "sm"
+        }
+
+    name, status = text.split("｜", 1)
+    overdue = "逾期" in status or "已過期" in status
+    return {
+        "type": "box", "layout": "horizontal", "alignItems": "center", "margin": "sm",
+        "contents": [
+            {"type": "text", "text": name, "size": "sm", "color": "#514944", "wrap": True, "flex": 1},
+            {
+                "type": "text", "text": status, "size": "xs", "align": "end", "flex": 0,
+                "margin": "md", "color": "#D85C5C" if overdue else "#8A817D",
+                "weight": "bold" if overdue else "regular"
+            }
+        ]
+    }
+
+def _weekly_action(label, data, display_text):
+    return {
+        "type": "button", "style": "secondary", "height": "sm", "flex": 1,
+        "action": {"type": "postback", "label": label, "data": data, "displayText": display_text}
+    }
+
+def build_flex_message(msg):
+    lines = msg.splitlines()
+    first = lines.pop(0) if lines else "📢 本週整理"
+    date_match = re.search(r"(\d{1,2}/\d{1,2}-\d{1,2}/\d{1,2})", first)
+    date_text = date_match.group(1) if date_match else ""
+    body = []
+    for raw in lines:
+        text = raw.strip()
+        if not text:
+            continue
+        section = re.match(r"^【(.+?)｜(\d+) 項】$", text)
+        if section:
+            body.append({
+                "type": "box", "layout": "horizontal", "alignItems": "center",
+                "margin": "xl" if body else "none", "contents": [
+                    {"type": "text", "text": section.group(1), "size": "sm", "weight": "bold", "color": "#6F625D", "flex": 1},
+                    {"type": "text", "text": f"{section.group(2)} 項", "size": "xs", "color": "#9B8F89", "align": "end", "flex": 0}
+                ]
+            })
+            continue
+        body.append(_weekly_item_row(text))
+
+    actions = [
+        ("查看全部待買", "action=list&type=buy", "查看全部待買"),
+        ("查看全部待辦", "action=list&type=todo", "查看全部待辦"),
+        ("查看繳費", "action=bills", "查看繳費狀態"),
+        ("查看效期提醒", "action=expiry", "查看效期提醒"),
+    ]
+    return {
+        "type": "flex",
+        "altText": f"📋 本週整理｜{date_text}",
+        "contents": {
+            "type": "bubble", "size": "giga",
+            "header": {
+                "type": "box", "layout": "vertical", "paddingAll": "18px", "backgroundColor": "#F6F1EE",
+                "contents": [
+                    {"type": "text", "text": "📋 本週整理", "size": "xl", "weight": "bold", "color": "#514944"},
+                    {"type": "text", "text": date_text, "size": "sm", "color": "#8F827C", "margin": "xs"}
+                ]
+            },
+            "body": {"type": "box", "layout": "vertical", "paddingAll": "18px", "contents": body},
+            "footer": {
+                "type": "box", "layout": "vertical", "paddingAll": "14px", "spacing": "sm", "contents": [
+                    {"type": "box", "layout": "horizontal", "spacing": "sm", "contents": [
+                        _weekly_action(*actions[0]), _weekly_action(*actions[1])
+                    ]},
+                    {"type": "box", "layout": "horizontal", "spacing": "sm", "contents": [
+                        _weekly_action(*actions[2]), _weekly_action(*actions[3])
+                    ]}
+                ]
+            }
+        }
+    }
+
 def send_line(msg):
     user_ids = [LINE_USER_ID, LINE_USER_ID_2]
+    flex_message = build_flex_message(msg)
+    if len(json.dumps(flex_message["contents"], ensure_ascii=False).encode("utf-8")) <= 30 * 1024:
+        line_message = flex_message
+    else:
+        line_message = {
+            "type": "text",
+            "text": msg,
+            "quickReply": {"items": [
+                {"type": "action", "action": {"type": "postback", "label": "查看全部待買", "data": "action=list&type=buy", "displayText": "查看全部待買"}},
+                {"type": "action", "action": {"type": "postback", "label": "查看全部待辦", "data": "action=list&type=todo", "displayText": "查看全部待辦"}},
+                {"type": "action", "action": {"type": "postback", "label": "查看繳費", "data": "action=bills", "displayText": "查看繳費狀態"}},
+                {"type": "action", "action": {"type": "postback", "label": "查看效期提醒", "data": "action=expiry", "displayText": "查看效期提醒"}}
+            ]}
+        }
     for uid in user_ids:
         res = requests.post(
             "https://api.line.me/v2/bot/message/push",
@@ -252,16 +350,7 @@ def send_line(msg):
             },
             json={
                 "to": uid,
-                "messages": [{
-                    "type": "text",
-                    "text": msg,
-                    "quickReply": {"items": [
-                        {"type": "action", "action": {"type": "postback", "label": "查看全部待買", "data": "action=list&type=buy", "displayText": "查看全部待買"}},
-                        {"type": "action", "action": {"type": "postback", "label": "查看全部待辦", "data": "action=list&type=todo", "displayText": "查看全部待辦"}},
-                        {"type": "action", "action": {"type": "postback", "label": "查看繳費", "data": "action=bills", "displayText": "查看繳費狀態"}},
-                        {"type": "action", "action": {"type": "postback", "label": "查看效期提醒", "data": "action=expiry", "displayText": "查看效期提醒"}}
-                    ]}
-                }]
+                "messages": [line_message]
             }
         )
         print(f"推播給 {uid[:10]}... 回應：{res.status_code}")

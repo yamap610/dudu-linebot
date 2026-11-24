@@ -113,17 +113,34 @@ class WeeklyPushTest(unittest.TestCase):
         ])
 
     @patch.object(weekly_push.requests, 'post')
-    def test_weekly_message_has_view_all_buttons(self, post):
+    def test_weekly_message_uses_flex_card_with_view_all_buttons(self, post):
         post.return_value.status_code = 200
         weekly_push.send_line('週報')
         message = post.call_args.kwargs['json']['messages'][0]
-        actions = [item['action']['data'] for item in message['quickReply']['items']]
+        self.assertEqual(message['type'], 'flex')
+        self.assertEqual(message['contents']['header']['contents'][0]['text'], '📋 本週整理')
+        buttons = [button for row in message['contents']['footer']['contents']
+                   for button in row['contents']]
+        actions = [button['action']['data'] for button in buttons]
         self.assertEqual(actions, [
             'action=list&type=buy',
             'action=list&type=todo',
             'action=bills',
             'action=expiry',
         ])
+
+    def test_weekly_flex_card_has_clean_rows_and_red_overdue_text(self):
+        message = weekly_push.build_flex_message(
+            '📢 本週整理 11/24-11/30\n\n'
+            '【急需處理｜2 項】\n'
+            '▪️ 整理行李｜逾期 2 天\n'
+            '▪️ 預約洗牙｜11/28'
+        )
+        encoded = str(message)
+        self.assertEqual(message['altText'], '📋 本週整理｜11/24-11/30')
+        self.assertNotIn('▪️', encoded)
+        self.assertIn('#D85C5C', encoded)
+        self.assertIn('逾期 2 天', encoded)
 
 
 if __name__ == '__main__':
